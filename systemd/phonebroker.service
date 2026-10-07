@@ -1,0 +1,22 @@
+[Unit]
+Description=Phone Broker Service
+After=network.target phonebroker-adb.service
+Requires=phonebroker-adb.service
+
+[Service]
+Type=simple
+User=phonebroker
+Group=phonebroker
+WorkingDirectory=/opt/phonebroker
+EnvironmentFile=/etc/phonebroker/env
+ExecStart=/opt/phonebroker/.venv/bin/uvicorn phonebroker.main:app \
+    --host 127.0.0.1 --port 8090 --workers 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/phonebroker
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

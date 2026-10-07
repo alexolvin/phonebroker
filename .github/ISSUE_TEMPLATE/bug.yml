@@ -1,0 +1,33 @@
+name: Bug report
+description: Something does not work as documented
+title: "[bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you expect and what did you get?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Exact commands (make targets, API calls) to reproduce.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output from /tmp/phonebroker-*.log or journalctl (redact tokens).
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Host distro, Python version, phone model/Android version, commit SHA.
+    validations:
+      required: true

@@ -1,0 +1,19 @@
+[Unit]
+Description=ADB Server (phonebroker)
+Before=phonebroker.service
+After=phonebroker-nft.service network.target
+Requires=phonebroker-nft.service
+
+[Service]
+Type=simple
+User=phonebroker
+Group=phonebroker
+Environment=HOME=/var/lib/phonebroker
+ExecStartPre=-/usr/bin/adb kill-server
+ExecStart=/usr/bin/adb nodaemon server start
+Restart=always
+RestartSec=3
+ReadWritePaths=/var/lib/phonebroker
+
+[Install]
+WantedBy=multi-user.target

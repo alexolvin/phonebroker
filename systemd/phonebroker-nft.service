@@ -1,0 +1,13 @@
+[Unit]
+Description=PhoneBroker nftables rules
+Before=phonebroker-adb.service
+After=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables/phonebroker.nft
+ExecStop=/usr/sbin/nft delete table inet phonebroker
+
+[Install]
+WantedBy=multi-user.target

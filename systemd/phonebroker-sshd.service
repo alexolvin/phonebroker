@@ -1,0 +1,16 @@
+[Unit]
+Description=PhoneBroker SSH daemon (port 2222, owner access only)
+After=tailscaled.service network.target
+Before=phonebroker.service
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=sshd
+RuntimeDirectoryPreserve=yes
+ExecStartPre=/usr/sbin/sshd -t -f /etc/phonebroker/sshd_config
+ExecStart=/usr/sbin/sshd -D -f /etc/phonebroker/sshd_config
+
+[Install]
+WantedBy=multi-user.target

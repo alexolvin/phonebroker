@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Pre-commit hook: secret-value leak guard.
+
+Wired via `git config core.hooksPath scripts/hooks`.
+Checks that values from .env (keys ending in _TOKEN, _SECRET, _PASSWORD,
+_DSN, _KEY) do not appear in staged diff.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _parse_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return values
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key:
+            values[key] = value
+    return values
+
+
+def main() -> int:
+    project_root = Path(__file__).resolve().parent.parent.parent
+    env_file = project_root / ".env"
+    env = _parse_env_file(env_file)
+
+    guarded: list[str] = []
+    for key, value in env.items():
+        upper = key.upper()
+        if any(upper.endswith(sfx) for sfx in ("_TOKEN", "_SECRET", "_PASSWORD", "_DSN", "_KEY")):
+            if len(value) >= 12:
+                guarded.append(value)
+
+    if not guarded:
+        return 0
+
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "-U0"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return 0
+
+    added_lines: list[tuple[str, int, str]] = []
+    current_file = ""
+    line_num = 0
+    for raw in diff.splitlines():
+        if raw.startswith("+++ b/"):
+            current_file = raw[6:]
+        elif raw.startswith("@@"):
+            try:
+                line_num = int(raw.split(",")[0][1:])
+            except (ValueError, IndexError):
+                line_num = 0
+        elif raw.startswith("+") and not raw.startswith("+++"):
+            line_num += 1
+            added_lines.append((current_file, line_num, raw[1:]))
+
+    violations: list[str] = []
+    for filepath, lineno, line in added_lines:
+        for secret in guarded:
+            if secret in line:
+                violations.append(f"{filepath}:{lineno}")
+                break
+
+    if violations:
+        print("COMMIT REJECTED: secret value found in staged changes:", file=sys.stderr)
+        for v in violations:
+            print(f"  {v}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

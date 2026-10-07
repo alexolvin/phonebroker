@@ -1,0 +1,69 @@
+# Default values — used by `make install` to generate /etc/phonebroker/broker.yaml.
+# The runtime config at /etc/phonebroker/broker.yaml is the single source read by
+# the service. This file is never read by the service itself.
+
+port: 8090
+heartbeat_timeout_s: 60
+check_interval_s: 2
+starvation_threshold: 5
+journal_retention_days: 90
+
+adb:
+  serial: "YOUR_ADB_SERIAL"  # fill in the real ADB serial (adb devices)
+
+unlock_swipe:
+  x1: 540
+  y1: 2000
+  x2: 540
+  y2: 500
+
+ime:
+  system_default: ""  # populated at install time
+  adbkeyboard: "com.android.adbkeyboard/.AdbIME"
+
+adbkeyboard:
+  url: "https://github.com/senzhk/ADBKeyBoard/releases/download/v2.4-dev/keyboardservice-debug.apk"
+  sha256: "e0d0cf276b710cb34c46121f58720f5285a83ed410b0d45f57a0677b67dc2852"
+
+platforms:
+  vinted:
+    package: ""
+    keywords: [vinted]
+    limits: {}
+  facebook_marketplace:
+    package: ""
+    keywords: [facebook, fb, marketplace, messenger]
+    limits: {}
+  sbazar_cz:
+    package: ""
+    keywords: [sbazar, bazo]
+    limits: {}
+  kleinanzeigen_de:
+    package: ""
+    keywords: [kleinanzeigen, ebay]
+    limits: {}
+  willhaben_at:
+    package: ""
+    keywords: [willhaben]
+    limits: {}
+  olx_pl:
+    package: ""
+    keywords: [olx, tablica]
+    limits: {}
+
+defaults:
+  background:
+    min_interval_s: 300
+    max_daily_leases: 10
+  interactive:
+    min_interval_s: 0
+    max_daily_leases: 50
+
+# One entry per client project. `make install` generates a token for each.
+clients:
+  client_a:
+    env_file: ""
+  client_b:
+    env_file: ""
+
+data_dir: "/var/lib/phonebroker"

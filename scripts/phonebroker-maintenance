@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# phonebroker-maintenance — forced SSH command for owner maintenance.
+# Activates maintenance mode, prints MAINTENANCE_ACTIVE, renews every 15s.
+# On EOF (SSH disconnect) or explicit end — deactivates maintenance.
+set -euo pipefail
+
+BROKER_URL="http://127.0.0.1:8090"
+TOKEN=$(grep '^PHONEBROKER_TOKEN_OWNER=' /etc/phonebroker/env | cut -d= -f2-)
+
+[ -n "$TOKEN" ] || { echo "ERROR: PHONEBROKER_TOKEN_OWNER not found" >&2; exit 1; }
+
+# Start maintenance
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BROKER_URL/maintenance/start" \
+    -H "Authorization: Bearer $TOKEN" 2>&1) || {
+    echo "ERROR: Failed to start maintenance (curl exit $?)" >&2
+    exit 1
+}
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" -ge 400 ] 2>/dev/null; then
+    echo "ERROR: Failed to start maintenance (HTTP $HTTP_CODE): $BODY" >&2
+    exit 1
+fi
+
+# Signal ready
+echo "MAINTENANCE_ACTIVE"
+
+# Loop: read with 15s timeout, renew on timeout, end on EOF
+while true; do
+    if IFS= read -r -t 15 line; then
+        # Got data on stdin — if it's "end", stop
+        if [ "$line" = "end" ]; then
+            curl -sf -X POST "$BROKER_URL/maintenance/end" \
+                -H "Authorization: Bearer $TOKEN" >/dev/null 2>&1 || true
+            break
+        fi
+    else
+        # read failed: timeout (rc>128) or EOF (rc=1)
+        local_rc=$?
+        if [ $local_rc -gt 128 ]; then
+            # Timeout — renew
+            curl -sf -X POST "$BROKER_URL/maintenance/renew" \
+                -H "Authorization: Bearer $TOKEN" >/dev/null 2>&1 || {
+                # Broker unreachable — end maintenance
+                break
+            }
+        else
+            # EOF (SSH disconnect) or signal — break
+            break
+        fi
+    fi
+done
+
+# End maintenance (if not already ended) + package sync
+SYNC_RESPONSE=$(curl -sf -X POST "$BROKER_URL/maintenance/end" \
+    -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo '{}')
+
+echo "MAINTENANCE_END"
+echo "$SYNC_RESPONSE" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, ValueError):
+    print("SYNC: no changes")
+    sys.exit(0)
+sync = data.get("sync", {})
+if not sync.get("changed"):
+    print("SYNC: no changes")
+else:
+    for item in sync.get("bound", []):
+        print(f"SYNC_BOUND: {item}")
+    for item in sync.get("unavailable", []):
+        print(f"SYNC_UNAVAILABLE: {item}")
+    for item in sync.get("unassigned", []):
+        print(f"SYNC_UNASSIGNED: {item}")
+'
+
+exit 0

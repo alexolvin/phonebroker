@@ -1,0 +1,88 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials.json
+secrets.yaml
+secrets.yml
+!config/secrets.yaml
+kubeconfig
+*.kubeconfig
+
+# Agent / local AI tooling (never publish)
+.agent/
+.agents/
+.claude/
+.codex/
+.cursor/
+.aider/
+.continue/
+.windsurf/
+.sweep/
+.goose/
+.idea-agent/
+*.agent.md
+.scratch/
+.qwen/
+
+# Terminal sessions, multiplexers, and distributed-agent runtime
+*.tmux
+*.tmux.log
+tmux-client-*
+tmux-server-*
+screenlog.*
+*.screenlog
+zellij-dump*
+nohup.out
+*.cast
+typescript
+.typescript
+pane-capture*
+session-dump*
+.queue/
+.jobs/
+.runs/
+tmux-sessions/
+terminal-dumps/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json.example
+
+# Logs and caches
+*.log
+.cache/
+tmp/
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+coverage/
+
+# Build / install
+build/
+dist/
+/opt/phonebroker/
+
+# APK (downloaded by install, not committed)
+assets/
