@@ -25,7 +25,7 @@ async def create_lease(body: LeaseRequest, request: Request):
     """Request a new lease. Returns 201 (active) or 202 (waiting)."""
     project = require_project(request)
 
-    if maintenance.is_active():
+    if maintenance.is_active(request.app.state.db):
         raise HTTPException(status_code=423, detail="maintenance")
 
     conn = request.app.state.db

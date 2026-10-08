@@ -161,12 +161,15 @@ else
     printf "%-40s %-20s %s\n" "ssh_host_ed25519_key" "absent (openssh not installed)" "will install"
 fi
 
-# 5. ADB keys
-if [ -f "$OWNER_HOME/.android/adbkey" ] && [ -f "$OWNER_HOME/.android/adbkey.pub" ]; then
-    printf "%-40s %-20s %s\n" "adbkey + adbkey.pub" "exist" "ok"
+# 5. ADB keys — installed system (key already in $DATA_DIR) or first install
+#    (owner key in $OWNER_HOME, home of SUDO_USER via getent)
+if [ -f "$DATA_DIR/.android/adbkey" ] && [ -f "$DATA_DIR/.android/adbkey.pub" ]; then
+    printf "%-40s %-20s %s\n" "adbkey + adbkey.pub" "installed ($DATA_DIR/.android)" "ok"
+elif [ -f "$OWNER_HOME/.android/adbkey" ] && [ -f "$OWNER_HOME/.android/adbkey.pub" ]; then
+    printf "%-40s %-20s %s\n" "adbkey + adbkey.pub" "owner key" "ok"
 else
     printf "%-40s %-20s %s\n" "adbkey + adbkey.pub" "MISSING" "STOP"
-    die "ADB key not found at $OWNER_HOME/.android/adbkey{,.pub}"
+    die "ADB key not found at $DATA_DIR/.android/adbkey{,.pub} (installed) or $OWNER_HOME/.android/adbkey{,.pub} (owner)"
 fi
 
 # 6. Owner SSH key (in user authorized_keys OR already transferred to phonebroker)
@@ -245,6 +248,9 @@ else
         mkdir -p "$REPO_ROOT/assets"
         if [ "$DRY_RUN" -ne 1 ]; then
             curl -fsSL -o "$APK_PATH" "$PINNED_URL" || die "ADBKeyBoard download failed"
+            # Repo files written by install are owned by the owner (SUDO_USER)
+            chown "$OWNER_USER" "$REPO_ROOT/assets" "$APK_PATH" \
+                || die "chown $REPO_ROOT/assets $APK_PATH to $OWNER_USER failed"
         fi
     fi
     if [ "$DRY_RUN" -ne 1 ] && [ -f "$APK_PATH" ]; then
@@ -380,8 +386,12 @@ run udevadm trigger
 set_step "3-adbkey"
 log "Step 3: ADB key"
 run mkdir -p "$DATA_DIR/.android"
-run cp "$OWNER_HOME/.android/adbkey" "$DATA_DIR/.android/adbkey"
-run cp "$OWNER_HOME/.android/adbkey.pub" "$DATA_DIR/.android/adbkey.pub"
+if [ -f "$OWNER_HOME/.android/adbkey" ] && [ -f "$OWNER_HOME/.android/adbkey.pub" ]; then
+    run cp "$OWNER_HOME/.android/adbkey" "$DATA_DIR/.android/adbkey"
+    run cp "$OWNER_HOME/.android/adbkey.pub" "$DATA_DIR/.android/adbkey.pub"
+elif [ ! -f "$DATA_DIR/.android/adbkey" ]; then
+    die "ADB key not found at $DATA_DIR/.android/adbkey (installed) or $OWNER_HOME/.android/adbkey (owner)"
+fi
 run chown -R "$PHONEBROKER_USER:$PHONEBROKER_USER" "$DATA_DIR/.android"
 run chmod 700 "$DATA_DIR/.android"
 run chmod 600 "$DATA_DIR/.android/adbkey"

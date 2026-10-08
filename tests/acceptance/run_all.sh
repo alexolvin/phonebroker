@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run all acceptance tests T1-T9, T12.
+# Run all acceptance tests T1-T9, T12-T14.
 # Self-contained: creates temporary clients/platform, cleans up on exit.
 # Requires: phonebroker service running, phone connected. Run as root.
 set -euo pipefail
@@ -121,6 +121,8 @@ run_test "T7: Launch restriction" T7_launch_restriction.sh
 run_test "T8: nftables isolation" T8_nft_isolation.sh
 run_test "T9: ADB restart" T9_adb_restart.sh
 run_test "T12: Package sync" T12_package_sync.sh
+run_test "T13: Maintenance restart" T13_maintenance_restart.sh
+run_test "T14: Screenshot/ui_dump" T14_screenshot_uidump.sh
 
 # Owner-only tests (run from laptop, not by this script)
 RESULTS+=("OWNER: T10: Phone screen (laptop)")
@@ -135,5 +137,17 @@ for r in "${RESULTS[@]}"; do
 done
 echo "======================"
 echo "Results: $PASS passed, $FAIL failed, $OWNER owner-only"
+
+# ─── Log copy (durable, survives /tmp wipe) ───────────────────────────────
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+REPORT_DIR="$REPO_ROOT/.a/reports"
+mkdir -p "$REPORT_DIR"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+cp "$LOG" "$REPORT_DIR/acceptance-$STAMP.log"
+# Repo files written by acceptance are owned by the owner (SUDO_USER)
+if [ -n "${SUDO_USER:-}" ]; then
+    chown "$SUDO_USER" "$REPORT_DIR/acceptance-$STAMP.log"
+fi
+echo "Log copy: $REPORT_DIR/acceptance-$STAMP.log"
 
 [ "$FAIL" -eq 0 ]

@@ -86,6 +86,13 @@ CREATE TABLE IF NOT EXISTS unassigned_packages (
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS maintenance (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    active INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    renew_deadline TEXT
+);
 """
 
 

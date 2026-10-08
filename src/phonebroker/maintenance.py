@@ -1,5 +1,9 @@
 """Maintenance mode — owner exclusive access.
 
+State is persisted in SQLite (maintenance table) so a broker restart
+keeps an active session (queue stays paused) and always records
+maintenance_end.
+
 When active:
 - Active lease is revoked immediately with reset
 - Queue is paused (no new acquisitions)
@@ -11,30 +15,48 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 
 from phonebroker import db, lease
-from phonebroker.config import load_config
 from phonebroker.reset import reset_after_lease
-
-# In-memory state (single worker, no persistence needed)
-_maintenance_active = False
-_maintenance_started_at: datetime | None = None
-_maintenance_last_renew: datetime | None = None
-_last_sync_result: dict = {}
 
 MAINTENANCE_TIMEOUT_S = 60
 
+_last_sync_result: dict = {}
 
-def is_active() -> bool:
-    return _maintenance_active
+
+def _get_state(conn: sqlite3.Connection) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM maintenance WHERE id=1").fetchone()
+
+
+def _set_state(
+    conn: sqlite3.Connection,
+    *,
+    active: bool,
+    started_at: str | None,
+    renew_deadline: str | None,
+) -> None:
+    conn.execute(
+        "INSERT INTO maintenance (id, active, started_at, renew_deadline) "
+        "VALUES (1, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET active=excluded.active, "
+        "started_at=excluded.started_at, renew_deadline=excluded.renew_deadline",
+        (int(active), started_at, renew_deadline),
+    )
+
+
+def is_active(conn: sqlite3.Connection) -> bool:
+    row = _get_state(conn)
+    return bool(row and row["active"])
 
 
 def start(conn: sqlite3.Connection) -> None:
     """Start maintenance mode. Revokes active lease, pauses queue."""
-    global _maintenance_active, _maintenance_started_at, _maintenance_last_renew
-
     now = datetime.now(UTC)
-    _maintenance_active = True
-    _maintenance_started_at = now
-    _maintenance_last_renew = now
+    deadline = now + timedelta(seconds=MAINTENANCE_TIMEOUT_S)
+    _set_state(
+        conn,
+        active=True,
+        started_at=now.isoformat(),
+        renew_deadline=deadline.isoformat(),
+    )
 
     # Revoke active lease if any
     active = db.get_active_lease(conn)
@@ -54,10 +76,14 @@ def start(conn: sqlite3.Connection) -> None:
 
 def renew(conn: sqlite3.Connection) -> None:
     """Renew maintenance mode (prevents auto-timeout)."""
-    global _maintenance_last_renew
-    if not _maintenance_active:
+    if not is_active(conn):
         return
-    _maintenance_last_renew = datetime.now(UTC)
+    deadline = datetime.now(UTC) + timedelta(seconds=MAINTENANCE_TIMEOUT_S)
+    conn.execute(
+        "UPDATE maintenance SET renew_deadline=? WHERE id=1",
+        (deadline.isoformat(),),
+    )
+    conn.commit()
 
 
 def get_last_sync_result() -> dict:
@@ -70,15 +96,12 @@ def end(conn: sqlite3.Connection, reason: str) -> dict:
 
     Returns the sync result dict.
     """
-    global _maintenance_active, _maintenance_started_at, _maintenance_last_renew
     global _last_sync_result
 
-    if not _maintenance_active:
+    if not is_active(conn):
         return _last_sync_result
 
-    _maintenance_active = False
-    _maintenance_started_at = None
-    _maintenance_last_renew = None
+    _set_state(conn, active=False, started_at=None, renew_deadline=None)
 
     # Phone reset
     reset_after_lease()
@@ -103,8 +126,24 @@ def end(conn: sqlite3.Connection, reason: str) -> dict:
 
 def check_timeout(conn: sqlite3.Connection) -> None:
     """Auto-end maintenance if no renew within 60s."""
-    if not _maintenance_active or _maintenance_last_renew is None:
+    row = _get_state(conn)
+    if not row or not row["active"] or row["renew_deadline"] is None:
         return
-    elapsed = datetime.now(UTC) - _maintenance_last_renew
-    if elapsed > timedelta(seconds=MAINTENANCE_TIMEOUT_S):
+    if datetime.fromisoformat(row["renew_deadline"]) < datetime.now(UTC):
         end(conn, "renew_timeout")
+
+
+def on_startup(conn: sqlite3.Connection) -> None:
+    """Restore maintenance state after broker restart.
+
+    Active with unexpired renew deadline → maintenance continues (queue
+    stays paused). Deadline expired → end with result=broker_restart.
+    """
+    row = _get_state(conn)
+    if not row or not row["active"]:
+        return
+    if row["renew_deadline"] is not None and (
+        datetime.fromisoformat(row["renew_deadline"]) > datetime.now(UTC)
+    ):
+        return
+    end(conn, "broker_restart")

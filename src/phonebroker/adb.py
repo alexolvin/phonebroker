@@ -5,6 +5,7 @@ each logged to the journal.
 """
 
 import base64
+import os
 import re
 import subprocess
 from xml.etree import ElementTree
@@ -108,13 +109,12 @@ def screenshot() -> bytes:
     remote_path = "/sdcard/phonebroker_screenshot.png"
     _adb_shell(cfg.adb.serial, f"screencap -p {remote_path}")
     # Pull the file
-    local_path = f"/tmp/phonebroker_screenshot_{__import__('os').getpid()}.png"
-    result = _adb(cfg.adb.serial, "pull", remote_path, local_path)
+    local_path = f"/tmp/phonebroker_screenshot_{os.getpid()}.png"
+    _adb(cfg.adb.serial, "pull", remote_path, local_path)
     with open(local_path, "rb") as f:
         data = f.read()
     # Clean up
     _adb_shell(cfg.adb.serial, f"rm {remote_path}")
-    import os
     os.unlink(local_path)
     return data
 
@@ -123,9 +123,14 @@ def ui_dump() -> str:
     """Run uiautomator dump and return the XML content."""
     cfg = load_config()
     _adb_shell(cfg.adb.serial, "uiautomator dump /sdcard/ui_dump.xml")
-    result = _adb(cfg.adb.serial, "shell", "cat /sdcard/ui_dump.xml")
+    # Pull the file (adb pull — no shell, white-list not involved)
+    local_path = f"/tmp/phonebroker_ui_dump_{os.getpid()}.xml"
+    _adb(cfg.adb.serial, "pull", "/sdcard/ui_dump.xml", local_path)
+    with open(local_path, "r", encoding="utf-8") as f:
+        content = f.read()
     _adb_shell(cfg.adb.serial, "rm /sdcard/ui_dump.xml")
-    return result.stdout.strip()
+    os.unlink(local_path)
+    return content.strip()
 
 
 def find_element(selector: str) -> tuple[int, int] | None:

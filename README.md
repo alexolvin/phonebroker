@@ -162,6 +162,77 @@ sudo make platform ID=olx_pl PACKAGE=-            # unbind
 sudo make uninstall                # full rollback
 ```
 
+## Operations
+
+### Owner access («Телефон» shortcut)
+
+The owner works with the phone directly through maintenance mode, from the
+Windows laptop:
+
+1. **One-time setup.** `make install` prints an scp command that copies
+   `tools/windows/update-phone.ps1` to `C:\Tools\phone\` on the laptop.
+   Then run it once in PowerShell:
+   ```powershell
+   .\update-phone.ps1 -Serial <adb-serial>
+   ```
+   It updates the SSH config (`Host phone`: `User phonebroker`, `Port 2222`),
+   regenerates `C:\Tools\phone\phone.ps1`, and runs T11 verification.
+   Create a desktop shortcut (e.g. «Телефон») that runs
+   `C:\Tools\phone\phone.ps1`.
+2. **Daily use.** Double-click the shortcut: an SSH session (forced command)
+   starts maintenance mode and an ADB tunnel (5038 → 5037), and scrcpy opens
+   the phone screen. Closing the scrcpy window ends maintenance — the phone
+   is reset and platform packages are re-synced (a sync summary window is
+   shown if anything changed).
+
+### Adding a platform
+
+- **Automatic.** Every time maintenance ends, the installed phone packages
+  are matched to configured platforms by keyword and the bindings are updated.
+- **Manual.**
+  ```bash
+  sudo make platforms                             # scan + bind all
+  sudo make platform ID=olx_pl PACKAGE=pl.tablica # bind one
+  sudo make platform ID=olx_pl PACKAGE=-          # unbind
+  ```
+
+### Adding a client project
+
+1. Add an entry to `config/broker.local.yaml`:
+   ```yaml
+   clients:
+     client_b:
+       env_file: "/path/to/client_b/.env"
+   ```
+2. Re-run `sudo make install` (the local config is re-merged into
+   `/etc/phonebroker/broker.yaml`).
+3. Generate the token:
+   ```bash
+   sudo make token PROJECT=client_b
+   ```
+   `PHONEBROKER_TOKEN_CLIENT_B` is written to `/etc/phonebroker/env` and to
+   the client's `.env`; the service is restarted.
+
+### Updating
+
+```bash
+sudo make install   # idempotent — re-merges config, updates units and scripts
+```
+
+On the laptop, re-run `update-phone.ps1 -Serial <adb-serial>` to refresh the
+SSH config and `phone.ps1`.
+
+### Rollback
+
+```bash
+sudo make uninstall
+```
+
+Stops and removes the systemd units and the nftables table, restores udev
+(`GROUP=plugdev`) and user-level ADB, returns the original SSH key, and
+removes `/etc/phonebroker`, `/opt/phonebroker`, `/var/lib/phonebroker`, and
+the `phonebroker` user. Log: `/tmp/phonebroker-uninstall.log`.
+
 ## Project structure
 
 ```text

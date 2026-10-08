@@ -37,6 +37,11 @@ def is_false_positive(line: str) -> bool:
     if "'adb'" in line or '"adb"' in line:
         return True
 
+    # Python import of the phonebroker.adb module — not an adb command
+    if re.search(r"\bfrom\s+phonebroker\s+import\b", line) or \
+       re.search(r"\bimport\s+phonebroker\.adb\b", line):
+        return True
+
     # adb.<attr> — config attribute path (e.g. adb.serial), not a command
     if re.search(r"(?<![a-zA-Z0-9_-])adb\.", line):
         return True

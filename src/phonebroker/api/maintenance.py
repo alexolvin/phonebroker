@@ -22,9 +22,9 @@ async def maintenance_renew(request: Request):
     from phonebroker.api.auth import require_owner
 
     require_owner(request)
-    if not maintenance.is_active():
-        raise HTTPException(status_code=409, detail="Maintenance not active")
     conn = request.app.state.db
+    if not maintenance.is_active(conn):
+        raise HTTPException(status_code=409, detail="Maintenance not active")
     maintenance.renew(conn)
     return {"ok": True}
 
@@ -34,8 +34,8 @@ async def maintenance_end(request: Request):
     from phonebroker.api.auth import require_owner
 
     require_owner(request)
-    if not maintenance.is_active():
-        raise HTTPException(status_code=409, detail="Maintenance not active")
     conn = request.app.state.db
+    if not maintenance.is_active(conn):
+        raise HTTPException(status_code=409, detail="Maintenance not active")
     sync_result = maintenance.end(conn, "end_by_owner")
     return {"status": "maintenance_ended", "sync": sync_result}

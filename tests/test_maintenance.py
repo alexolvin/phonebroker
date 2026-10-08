@@ -1,4 +1,4 @@
-"""Tests for maintenance mode."""
+"""Tests for maintenance mode (SQLite-persisted state)."""
 
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -8,7 +8,6 @@ from unittest.mock import patch
 import pytest
 
 from phonebroker import db, maintenance
-from phonebroker.config import reset_config
 
 
 @pytest.fixture
@@ -21,21 +20,20 @@ def conn():
 
 
 @pytest.fixture(autouse=True)
-def _reset_maintenance():
-    maintenance._maintenance_active = False
-    maintenance._maintenance_started_at = None
-    maintenance._maintenance_last_renew = None
-    yield
-    maintenance._maintenance_active = False
-
-
-@pytest.fixture(autouse=True)
 def _mock_sync():
     with (
         patch("phonebroker.packages.sync_packages", return_value={"bound": [], "unavailable": [], "unassigned": [], "changed": False}),
         patch("phonebroker.lease.reset_after_lease"),
     ):
         yield
+
+
+def _set_renew_deadline(conn, dt: datetime) -> None:
+    conn.execute(
+        "UPDATE maintenance SET renew_deadline=? WHERE id=1",
+        (dt.isoformat(),),
+    )
+    conn.commit()
 
 
 @patch("phonebroker.maintenance.reset_after_lease")
@@ -55,13 +53,11 @@ def test_start_revokes_active_lease(mock_adb, mock_reset, conn):
     # Start maintenance
     maintenance.start(conn)
 
-    assert maintenance.is_active()
+    assert maintenance.is_active(conn)
     row = db.get_lease(conn, lease_id)
     assert row["status"] == "revoked"
 
     # Check journal
-    entries = db.get_lease_journal(conn, "")  # maintenance has no lease_id
-    # Actually check via project
     rows = conn.execute(
         "SELECT * FROM journal WHERE action='maintenance_start'"
     ).fetchall()
@@ -75,7 +71,7 @@ def test_end_by_owner(mock_reset, conn):
     maintenance.start(conn)
     maintenance.end(conn, "end_by_owner")
 
-    assert not maintenance.is_active()
+    assert not maintenance.is_active(conn)
     rows = conn.execute(
         "SELECT * FROM journal WHERE action='maintenance_end'"
     ).fetchall()
@@ -85,15 +81,15 @@ def test_end_by_owner(mock_reset, conn):
 
 @patch("phonebroker.maintenance.reset_after_lease")
 def test_renew_timeout(mock_reset, conn):
-    """Auto-end after 60s without renew."""
+    """Auto-end after renew deadline passes."""
     maintenance.start(conn)
 
-    # Rewind last_renew to 61s ago
-    maintenance._maintenance_last_renew = datetime.now(UTC) - timedelta(seconds=61)
+    # Expire the renew deadline
+    _set_renew_deadline(conn, datetime.now(UTC) - timedelta(seconds=1))
 
     maintenance.check_timeout(conn)
 
-    assert not maintenance.is_active()
+    assert not maintenance.is_active(conn)
     rows = conn.execute(
         "SELECT * FROM journal WHERE action='maintenance_end'"
     ).fetchall()
@@ -111,3 +107,35 @@ def test_ssh_disconnect(mock_reset, conn):
         "SELECT * FROM journal WHERE action='maintenance_end'"
     ).fetchall()
     assert rows[0]["result"] == "ssh_disconnect"
+
+
+@patch("phonebroker.maintenance.reset_after_lease")
+def test_startup_continues_active_maintenance(mock_reset, conn):
+    """Broker restart with unexpired renew deadline keeps maintenance active."""
+    maintenance.start(conn)
+
+    # Simulate broker restart: state is in the DB, new process calls on_startup
+    maintenance.on_startup(conn)
+
+    assert maintenance.is_active(conn)
+    rows = conn.execute(
+        "SELECT * FROM journal WHERE action='maintenance_end'"
+    ).fetchall()
+    assert len(rows) == 0
+
+
+@patch("phonebroker.maintenance.reset_after_lease")
+def test_startup_expired_renew_ends_with_broker_restart(mock_reset, conn):
+    """Broker restart with expired renew deadline ends maintenance."""
+    maintenance.start(conn)
+
+    _set_renew_deadline(conn, datetime.now(UTC) - timedelta(seconds=1))
+
+    maintenance.on_startup(conn)
+
+    assert not maintenance.is_active(conn)
+    rows = conn.execute(
+        "SELECT * FROM journal WHERE action='maintenance_end'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["result"] == "broker_restart"

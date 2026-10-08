@@ -166,6 +166,78 @@ sudo make platform ID=olx_pl PACKAGE=-            # отвязка
 sudo make uninstall                # полный откат
 ```
 
+## Операции
+
+### Доступ владельца (ярлык «Телефон»)
+
+Владелец работает с телефоном напрямую через режим обслуживания,
+с Windows-ноутбука:
+
+1. **Разовая настройка.** `make install` выводит команду scp, копирующую
+   `tools/windows/update-phone.ps1` в `C:\Tools\phone\` на ноутбуке.
+   Затем один раз в PowerShell:
+   ```powershell
+   .\update-phone.ps1 -Serial <adb-serial>
+   ```
+   Обновляет SSH-конфиг (`Host phone`: `User phonebroker`, `Port 2222`),
+   перегенерирует `C:\Tools\phone\phone.ps1` и запускает проверку T11.
+   Создайте ярлык на рабочем столе (например «Телефон»), запускающий
+   `C:\Tools\phone\phone.ps1`.
+2. **Ежедневное использование.** Двойной клик по ярлыку: SSH-сессия
+   (forced command) включает режим обслуживания и ADB-туннель
+   (5038 → 5037), scrcpy открывает экран телефона. Закрытие окна scrcpy
+   завершает обслуживание — телефон сбрасывается, пакеты площадок
+   синхронизируются (при изменениях показывается окно сводки).
+
+### Добавление площадки
+
+- **Автоматически.** При каждом завершении обслуживания установленные
+  пакеты телефона сопоставляются с настроенными площадками по ключевым
+  словам, привязка обновляется.
+- **Вручную.**
+  ```bash
+  sudo make platforms                             # скан + привязка всех
+  sudo make platform ID=olx_pl PACKAGE=pl.tablica # привязать одну
+  sudo make platform ID=olx_pl PACKAGE=-          # отвязать
+  ```
+
+### Подключение проекта-клиента
+
+1. Добавьте запись в `config/broker.local.yaml`:
+   ```yaml
+   clients:
+     client_b:
+       env_file: "/path/to/client_b/.env"
+   ```
+2. Повторно выполните `sudo make install` (локальный конфиг снова
+   сливается в `/etc/phonebroker/broker.yaml`).
+3. Сгенерируйте токен:
+   ```bash
+   sudo make token PROJECT=client_b
+   ```
+   `PHONEBROKER_TOKEN_CLIENT_B` записывается в `/etc/phonebroker/env`
+   и в `.env` клиента, сервис перезапускается.
+
+### Обновление
+
+```bash
+sudo make install   # идемпотентно — пересливает конфиг, обновляет юниты и скрипты
+```
+
+На ноутбуке повторно выполните `update-phone.ps1 -Serial <adb-serial>`,
+чтобы обновить SSH-конфиг и `phone.ps1`.
+
+### Откат
+
+```bash
+sudo make uninstall
+```
+
+Останавливает и удаляет systemd-юниты и nftables-таблицу, восстанавливает
+udev (`GROUP=plugdev`) и пользовательский ADB, возвращает исходный SSH-ключ,
+удаляет `/etc/phonebroker`, `/opt/phonebroker`, `/var/lib/phonebroker`
+и пользователя `phonebroker`. Лог: `/tmp/phonebroker-uninstall.log`.
+
 ## Структура проекта
 
 ```text

@@ -96,7 +96,8 @@ log "Returning SSH key to $OWNER_HOME/.ssh/authorized_keys..."
 if [ -f "$ETC_DIR/owner_key.orig" ]; then
     ORIGINAL_KEY=$(cat "$ETC_DIR/owner_key.orig")
     run bash -c "mkdir -p '$OWNER_HOME/.ssh' && echo '$ORIGINAL_KEY' >> '$OWNER_HOME/.ssh/authorized_keys'"
-    run chown "$OWNER_USER":"$OWNER_USER" "$OWNER_HOME/.ssh/authorized_keys" 2>/dev/null || true
+    run chown "$OWNER_USER":"$OWNER_USER" "$OWNER_HOME/.ssh/authorized_keys" \
+        || { log "ERROR: chown $OWNER_HOME/.ssh/authorized_keys to $OWNER_USER failed"; exit 1; }
     run chmod 600 "$OWNER_HOME/.ssh/authorized_keys" 2>/dev/null || true
     log "Original SSH key restored from owner_key.orig"
 else

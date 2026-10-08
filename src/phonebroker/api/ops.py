@@ -46,7 +46,7 @@ class WaitForBody(BaseModel):
 
 def _require_active_lease(request: Request, lease_id: str, project: str):
     """Validate lease is active and belongs to project."""
-    if maintenance.is_active():
+    if maintenance.is_active(request.app.state.db):
         raise HTTPException(status_code=423, detail="maintenance")
     conn = request.app.state.db
     row = db.get_lease(conn, lease_id)

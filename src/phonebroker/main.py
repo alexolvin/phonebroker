@@ -30,6 +30,7 @@ async def startup():
     conn = db.get_connection(get_data_dir() / "phonebroker.db")
     db.init_db(conn)
     app.state.db = conn
+    maintenance.on_startup(conn)
     app.state.bg_task = asyncio.create_task(_background_loop())
     logger.info("PhoneBroker started")
 
@@ -64,7 +65,7 @@ async def _background_loop():
             maintenance.check_timeout(conn)
 
             # Try to acquire next from queue
-            if not maintenance.is_active():
+            if not maintenance.is_active(conn):
                 active = db.get_active_lease(conn)
                 if active is None:
                     await _try_acquire_from_queue(conn)

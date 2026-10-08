@@ -120,10 +120,17 @@ async def test_text_calls_adb(mock_adb, client, active_lease):
 
 
 @pytest.mark.asyncio
-async def test_maintenance_blocks_ops(client, active_lease):
+async def test_maintenance_blocks_ops(client, active_lease, db_conn):
     """Operations blocked during maintenance (423)."""
-    from phonebroker import maintenance
-    maintenance._maintenance_active = True
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    db_conn.execute(
+        "INSERT INTO maintenance (id, active, started_at, renew_deadline) "
+        "VALUES (1, 1, ?, ?)",
+        (now.isoformat(), (now + timedelta(seconds=60)).isoformat()),
+    )
+    db_conn.commit()
     try:
         resp = await client.post(
             f"/lease/{active_lease}/ops/tap",
@@ -132,4 +139,5 @@ async def test_maintenance_blocks_ops(client, active_lease):
         )
         assert resp.status_code == 423
     finally:
-        maintenance._maintenance_active = False
+        db_conn.execute("DELETE FROM maintenance WHERE id=1")
+        db_conn.commit()

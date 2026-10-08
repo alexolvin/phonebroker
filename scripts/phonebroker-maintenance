@@ -38,12 +38,25 @@ while true; do
         # read failed: timeout (rc>128) or EOF (rc=1)
         local_rc=$?
         if [ $local_rc -gt 128 ]; then
-            # Timeout — renew
-            curl -sf -X POST "$BROKER_URL/maintenance/renew" \
-                -H "Authorization: Bearer $TOKEN" >/dev/null 2>&1 || {
-                # Broker unreachable — end maintenance
-                break
-            }
+            # Timeout — renew. If the broker is unreachable, retry every 5s
+            # and keep the session (broker restart must not drop it).
+            renew_done=false
+            while [ "$renew_done" != "true" ]; do
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                    -X POST "$BROKER_URL/maintenance/renew" \
+                    -H "Authorization: Bearer $TOKEN" 2>/dev/null) || HTTP_CODE="000"
+                case "$HTTP_CODE" in
+                    200) renew_done=true ;;
+                    409)
+                        # Maintenance already ended (renew timeout) — leave loop
+                        break 2
+                        ;;
+                    *)
+                        # Broker unreachable or transient error — retry in 5s
+                        sleep 5
+                        ;;
+                esac
+            done
         else
             # EOF (SSH disconnect) or signal — break
             break
