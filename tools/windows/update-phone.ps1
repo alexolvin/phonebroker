@@ -1,10 +1,11 @@
 ﻿# update-phone.ps1 — Run once in PowerShell to update phone access.
 # Updates SSH config, rewrites phone.ps1, then runs T11 verification.
 #
-# Usage: .\update-phone.ps1 -Serial <adb-serial>
+# Usage: .\update-phone.ps1 -Serial <adb-serial> [-ToolsRoot C:\Tools]
 
 param(
-    [string]$Serial
+    [string]$Serial,
+    [string]$ToolsRoot = "C:\Tools"
 )
 
 if ($PSVersionTable.PSVersion.Major -lt 5) {
@@ -113,17 +114,18 @@ try {
     }
 
     # 2. Rewrite phone.ps1
-    $phoneScript = "C:\Tools\phone\phone.ps1"
-    if (-not (Test-Path "C:\Tools\phone")) {
-        New-Item -ItemType Directory -Path "C:\Tools\phone" -Force | Out-Null
+    $phoneDir = Join-Path $ToolsRoot "phone"
+    $phoneScript = Join-Path $phoneDir "phone.ps1"
+    if (-not (Test-Path $phoneDir)) {
+        New-Item -ItemType Directory -Path $phoneDir -Force | Out-Null
     }
 
     $scriptContent = @'
 # phone.ps1 — Open phone screen via maintenance + scrcpy
 $ErrorActionPreference = "Stop"
 $Serial = "__PHONEBROKER_SERIAL__"
-$AdbExe = "C:\Tools\scrcpy\adb.exe"
-$ScrcpyExe = "C:\Tools\scrcpy\scrcpy.exe"
+$AdbExe = "__TOOLS_ROOT__\scrcpy\adb.exe"
+$ScrcpyExe = "__TOOLS_ROOT__\scrcpy\scrcpy.exe"
 Add-Type -AssemblyName System.Windows.Forms
 
 function Show-PhoneError([string]$title, [string]$msg) {
@@ -140,7 +142,7 @@ if (-not $mutex.WaitOne(0)) {
 # ─── Kill orphaned processes from previous runs ───────────────────────────
 Get-Process scrcpy -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process -Name "adb" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -like "C:\Tools\scrcpy\*" } | Stop-Process -Force
+    Where-Object { $_.Path -like "__TOOLS_ROOT__\scrcpy\*" } | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
 # ─── SSH: maintenance + ADB tunnel ────────────────────────────────────────
@@ -283,6 +285,7 @@ Unregister-Event -SourceIdentifier "scrcpyErr" -ErrorAction SilentlyContinue
 $mutex.ReleaseMutex()
 '@
 $scriptContent = $scriptContent.Replace("__PHONEBROKER_SERIAL__", $Serial)
+$scriptContent = $scriptContent.Replace("__TOOLS_ROOT__", $ToolsRoot)
 
     $utf8Bom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($phoneScript, $scriptContent, $utf8Bom)

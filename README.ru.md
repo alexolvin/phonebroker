@@ -47,9 +47,10 @@
 git clone https://github.com/alexolvin/phonebroker.git
 cd phonebroker
 
-# 1. Укажите ADB serial телефона (adb devices) в config/broker.yaml:
-#    adb:
-#      serial: "YOUR_ADB_SERIAL"
+# 1. Создайте config/broker.local.yaml (gitignored) с ADB serial телефона
+#    (см. `adb devices`):
+#      adb:
+#        serial: "YOUR_ADB_SERIAL"
 
 # 2. Установка (системный пользователь, udev, nftables, systemd, ADB-ключ,
 #    токены, ADBKeyBoard):
@@ -72,14 +73,28 @@ sudo make acceptance
 
 ## Конфигурация
 
-В репозитории — `config/broker.yaml` со значениями по умолчанию;
-`make install` копирует его в `/etc/phonebroker/broker.yaml`,
-который является единственным runtime-источником.
+В репозитории — `config/broker.yaml` с публичными значениями по умолчанию.
+Локальные значения, которые не должны попадать в публичный репозиторий
+(реальный ADB serial, клиентские проекты, комментарий ключа владельца),
+хранятся в **`config/broker.local.yaml`** (gitignored).
+`make install` сливает оба файла в `/etc/phonebroker/broker.yaml` —
+единственный runtime-источник:
+
+```yaml
+# config/broker.local.yaml (gitignored — пример)
+adb:
+  serial: "YOUR_ADB_SERIAL"
+ssh:
+  key_comment: "your-key-comment"   # комментарий ключа владельца в authorized_keys
+clients:
+  client_a:
+    env_file: "/path/to/client/project/.env"
+```
 
 | Ключ | Назначение | По умолчанию |
 |---|---|---|
 | `port` | Порт API | `8090` |
-| `adb.serial` | ADB serial телефона — **заполнить обязательно** | `YOUR_ADB_SERIAL` |
+| `adb.serial` | ADB serial телефона — **указать в `config/broker.local.yaml`** | `YOUR_ADB_SERIAL` |
 | `heartbeat_timeout_s` | Аренда возвращается в очередь, если клиент перестал слать heartbeat | `60` |
 | `check_interval_s` | Интервал перепроверки очереди | `2` |
 | `starvation_threshold` | Очередная аренда поднимается после N проверок | `5` |
@@ -87,7 +102,7 @@ sudo make acceptance
 | `platforms.<id>.keywords` | Ключевые слова для автоматического сопоставления | `[]` |
 | `platforms.<id>.limits` | Переопределение лимитов площадки | `{}` |
 | `defaults.background` / `defaults.interactive` | `min_interval_s`, `max_daily_leases` | см. файл |
-| `clients.<name>` | Запись на каждый клиентский проект; для каждого генерируется токен | — |
+| `clients.<name>` | Запись на каждый клиентский проект (в локальном конфиге); для каждого генерируется токен | `{}` |
 | `data_dir` | SQLite + скриншоты | `/var/lib/phonebroker` |
 
 **Токены.** `make install` генерирует `PHONEBROKER_TOKEN_OWNER` и по одному
@@ -177,6 +192,8 @@ make acceptance  # T1–T12 против установленной систем
 
 В репозитории нет секретов; токены хранятся в `/etc/phonebroker/env`
 (root:phonebroker, 640) и резолвятся во время выполнения.
+Реальный ADB serial, клиентские проекты и комментарий ключа владельца —
+в gitignored `config/broker.local.yaml`.
 ADB-порты (5037, 27183) ограничены nftables пользователем `phonebroker`.
 Сообщать об уязвимостях — через [SECURITY.md](SECURITY.md).
 

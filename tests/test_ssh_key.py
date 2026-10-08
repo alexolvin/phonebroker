@@ -39,20 +39,20 @@ def _extract(line: str) -> str:
 
 def test_no_options():
     """Plain key line without options."""
-    line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey phone-admin"
-    assert _extract(line) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey phone-admin"
+    line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey laptop-key"
+    assert _extract(line) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey laptop-key"
 
 
 def test_restrict_options():
     """Key line with restrict,port-forwarding options prefix."""
-    line = 'restrict,port-forwarding,permitopen="127.0.0.1:5037" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey phone-admin'
-    assert _extract(line) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey phone-admin"
+    line = 'restrict,port-forwarding,permitopen="127.0.0.1:5037" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey laptop-key'
+    assert _extract(line) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey laptop-key"
 
 
 def test_existing_command():
     """Key line with an already-present command= field (from previous install)."""
-    line = 'command="/opt/phonebroker/scripts/phonebroker-maintenance",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey phone-admin'
-    assert _extract(line) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey phone-admin"
+    line = 'command="/opt/phonebroker/scripts/phonebroker-maintenance",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey laptop-key'
+    assert _extract(line) == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey laptop-key"
 
 
 def test_no_comment():

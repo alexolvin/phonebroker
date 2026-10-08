@@ -15,6 +15,12 @@ secrets.yml
 kubeconfig
 *.kubeconfig
 
+# Local overrides (real serial, client projects, owner key) — never publish
+config/broker.local.yaml
+
+# Private planning notes — never publish
+PLAN.md
+
 # Agent / local AI tooling (never publish)
 .agent/
 .agents/

@@ -24,7 +24,8 @@ PHONEBROKER_USER="phonebroker"
 DATA_DIR="/var/lib/phonebroker"
 ETC_DIR="/etc/phonebroker"
 OPT_DIR="/opt/phonebroker"
-OWNER_USER="${SUDO_USER:-user}"
+OWNER_USER="${SUDO_USER:-}"
+[ -n "$OWNER_USER" ] || { echo "[uninstall] ERROR: cannot determine owner user — run via sudo" >&2; exit 1; }
 OWNER_HOME=$(getent passwd "$OWNER_USER" | cut -d: -f6)
 
 log() { echo "[uninstall] $*"; }

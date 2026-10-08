@@ -30,7 +30,9 @@ python3 -m venv .venv
 - Shell scripts go through `adb_cmd` from `scripts/adb_cmd.sh` — never call
   `adb` directly (enforced by `make gates`).
 - No hardcoded serials, paths, hostnames, or tokens in code, scripts, or tests.
-  Use `config/broker.yaml` or `/etc/phonebroker/broker.yaml`.
+  Use `config/broker.yaml` (public defaults), `config/broker.local.yaml`
+  (gitignored: real serial, client projects, owner key), or
+  `/etc/phonebroker/broker.yaml`.
 - Commit messages: Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …).
 - Keep `README.md` (English) and `README.ru.md` (Russian) in sync; section
   order must stay identical.

@@ -39,16 +39,47 @@ DATA_DIR="/var/lib/phonebroker"
 ETC_DIR="/etc/phonebroker"
 OPT_DIR="/opt/phonebroker"
 PHONEBROKER_SHELL="$OPT_DIR/scripts/phonebroker-maintenance"
-OWNER_USER="${SUDO_USER:-user}"
+LOCAL_CONFIG="$REPO_ROOT/config/broker.local.yaml"
+OWNER_USER="${SUDO_USER:-}"
+[ -n "$OWNER_USER" ] || { echo "[install] ERROR: cannot determine owner user — run via sudo" >&2; exit 1; }
 OWNER_HOME=$(getent passwd "$OWNER_USER" | cut -d: -f6)
-SERIAL=$(python3 -c "import yaml; print(yaml.safe_load(open('$REPO_ROOT/config/broker.yaml'))['adb']['serial'])")
 IME_TMP="/tmp/phonebroker-default-ime"
 
 log() { echo "[install] $*"; }
 die() { echo "[install] ERROR: $*" >&2; exit 1; }
 
-if [ -z "$SERIAL" ] || [ "$SERIAL" = "YOUR_ADB_SERIAL" ]; then
-    die "adb.serial is not set in config/broker.yaml — fill in the real ADB serial"
+# Serial: config/broker.local.yaml (gitignored) overrides config/broker.yaml
+SERIAL=$(python3 - "$LOCAL_CONFIG" "$REPO_ROOT/config/broker.yaml" << 'PYEOF'
+import sys, yaml
+serial = ""
+for path in sys.argv[1:3]:
+    try:
+        with open(path) as f:
+            v = (yaml.safe_load(f) or {}).get("adb", {}).get("serial", "")
+    except (FileNotFoundError, yaml.YAMLError):
+        continue
+    if v and v != "YOUR_ADB_SERIAL":
+        serial = v
+        break
+print(serial)
+PYEOF
+)
+if [ -z "$SERIAL" ]; then
+    die "adb.serial is not set — put the real ADB serial (adb devices) in config/broker.local.yaml"
+fi
+
+# Owner SSH key comment (identifies the key in authorized_keys)
+SSH_KEY_COMMENT=$(python3 - "$LOCAL_CONFIG" << 'PYEOF'
+import sys, yaml
+try:
+    with open(sys.argv[1]) as f:
+        print((yaml.safe_load(f) or {}).get("ssh", {}).get("key_comment", ""))
+except (FileNotFoundError, yaml.YAMLError):
+    print("")
+PYEOF
+)
+if [ -z "$SSH_KEY_COMMENT" ]; then
+    die "ssh.key_comment is not set — put the owner SSH key comment in config/broker.local.yaml"
 fi
 
 # Extract "type b64 [comment]" from an authorized_keys line, discarding any options prefix.
@@ -139,15 +170,15 @@ else
 fi
 
 # 6. Owner SSH key (in user authorized_keys OR already transferred to phonebroker)
-if grep -q 'phone-admin' "$OWNER_HOME/.ssh/authorized_keys" 2>/dev/null; then
-    printf "%-40s %-20s %s\n" "phone-admin key" "in user authorized_keys" "ok"
+if grep -qF "$SSH_KEY_COMMENT" "$OWNER_HOME/.ssh/authorized_keys" 2>/dev/null; then
+    printf "%-40s %-20s %s\n" "owner ssh key" "in user authorized_keys" "ok"
 elif [ -f "$DATA_DIR/.ssh/authorized_keys" ] 2>/dev/null; then
-    printf "%-40s %-20s %s\n" "phone-admin key" "transferred (phonebroker)" "ok"
+    printf "%-40s %-20s %s\n" "owner ssh key" "transferred (phonebroker)" "ok"
 elif [ -f "$ETC_DIR/owner_key.orig" ]; then
-    printf "%-40s %-20s %s\n" "phone-admin key" "saved in owner_key.orig" "ok"
+    printf "%-40s %-20s %s\n" "owner ssh key" "saved in owner_key.orig" "ok"
 else
-    printf "%-40s %-20s %s\n" "phone-admin key" "NOT FOUND" "STOP"
-    die "Owner SSH key (phone-admin) not found in authorized_keys or owner_key.orig"
+    printf "%-40s %-20s %s\n" "owner ssh key" "NOT FOUND" "STOP"
+    die "Owner SSH key (comment: $SSH_KEY_COMMENT) not found in authorized_keys or owner_key.orig"
 fi
 
 # 7. ADB device — strategy depends on system state
@@ -467,13 +498,36 @@ run chmod 640 "$ETC_DIR/env"
 
 set_step "9-brokeryaml"
 log "Step 9: broker.yaml"
-run cp "$REPO_ROOT/config/broker.yaml" "$ETC_DIR/broker.yaml"
-# Write IME from phone prep
-if [ -f "$IME_TMP" ]; then
-    DEFAULT_IME=$(cat "$IME_TMP")
-    run sed -i "s|system_default: \"\"|system_default: \"${DEFAULT_IME}\"|" "$ETC_DIR/broker.yaml"
-    log "  IME written: $DEFAULT_IME"
-fi
+# Runtime config = repo defaults + local overrides (serial, clients) + phone IME
+run python3 - "$REPO_ROOT/config/broker.yaml" "$LOCAL_CONFIG" "$ETC_DIR/broker.yaml" "$IME_TMP" << 'PYEOF'
+import os, sys, yaml
+
+public_path, local_path, out_path, ime_tmp = sys.argv[1:5]
+with open(public_path) as f:
+    cfg = yaml.safe_load(f)
+try:
+    with open(local_path) as f:
+        local = yaml.safe_load(f) or {}
+except (FileNotFoundError, yaml.YAMLError):
+    local = {}
+
+serial = (local.get("adb") or {}).get("serial", "")
+if serial and serial != "YOUR_ADB_SERIAL":
+    cfg.setdefault("adb", {})["serial"] = serial
+
+if local.get("clients"):
+    cfg["clients"] = local["clients"]
+
+if os.path.isfile(ime_tmp):
+    with open(ime_tmp) as f:
+        ime = f.read().strip()
+    if ime and ime != "null":
+        cfg.setdefault("ime", {})["system_default"] = ime
+        print(f"[install]   IME written: {ime}")
+
+with open(out_path, "w") as f:
+    yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+PYEOF
 run chown root:"$PHONEBROKER_USER" "$ETC_DIR/broker.yaml"
 run chmod 640 "$ETC_DIR/broker.yaml"
 
@@ -483,10 +537,10 @@ set_step "10-sshkey"
 log "Step 10: SSH key"
 run mkdir -p "$DATA_DIR/.ssh"
 
-if [ -f "$OWNER_HOME/.ssh/authorized_keys" ] && grep -q 'phone-admin' "$OWNER_HOME/.ssh/authorized_keys" 2>/dev/null; then
+if [ -f "$OWNER_HOME/.ssh/authorized_keys" ] && grep -qF "$SSH_KEY_COMMENT" "$OWNER_HOME/.ssh/authorized_keys" 2>/dev/null; then
     # Save original (only on first run)
     if [ ! -f "$ETC_DIR/owner_key.orig" ]; then
-        ORIGINAL_KEY=$(grep 'phone-admin' "$OWNER_HOME/.ssh/authorized_keys" | head -1)
+        ORIGINAL_KEY=$(grep -F "$SSH_KEY_COMMENT" "$OWNER_HOME/.ssh/authorized_keys" | head -1)
         run bash -c "echo '$ORIGINAL_KEY' > '$ETC_DIR/owner_key.orig'"
         run chown root:"$PHONEBROKER_USER" "$ETC_DIR/owner_key.orig"
         run chmod 640 "$ETC_DIR/owner_key.orig"
@@ -503,10 +557,10 @@ if [ -f "$OWNER_HOME/.ssh/authorized_keys" ] && grep -q 'phone-admin' "$OWNER_HO
                 [ -n "$KEY_COMMENT" ] && printf ' %s' "$KEY_COMMENT"
                 printf '\n'
             } >> "$DATA_DIR/.ssh/authorized_keys"
-        done < <(grep "phone-admin" "$OWNER_HOME/.ssh/authorized_keys")
+        done < <(grep -F "$SSH_KEY_COMMENT" "$OWNER_HOME/.ssh/authorized_keys")
 
         # Remove from user
-        grep -v "phone-admin" "$OWNER_HOME/.ssh/authorized_keys" > /tmp/.ak_tmp || true
+        grep -vF "$SSH_KEY_COMMENT" "$OWNER_HOME/.ssh/authorized_keys" > /tmp/.ak_tmp || true
         cat /tmp/.ak_tmp > "$OWNER_HOME/.ssh/authorized_keys"
         rm -f /tmp/.ak_tmp
 
@@ -528,7 +582,7 @@ if [ -f "$OWNER_HOME/.ssh/authorized_keys" ] && grep -q 'phone-admin' "$OWNER_HO
         log "  [DRY-RUN] Key would be transferred (value not shown)"
     fi
 else
-    log "  SKIP: phone-admin key not found or already transferred"
+    log "  SKIP: owner key not found or already transferred"
 fi
 
 run chown -R "$PHONEBROKER_USER:$PHONEBROKER_USER" "$DATA_DIR/.ssh"

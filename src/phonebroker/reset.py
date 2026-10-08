@@ -11,7 +11,7 @@ All ADB calls are wrapped: if the phone is offline, reset degrades gracefully
 import logging
 import subprocess
 
-from phonebroker import adb
+from phonebroker import adb, db
 from phonebroker.config import load_config
 from phonebroker.exceptions import ADBError
 
@@ -19,13 +19,25 @@ logger = logging.getLogger(__name__)
 
 
 def _platform_packages() -> list[str]:
-    """Get all platform packages from config (non-empty only)."""
+    """Get all effective platform packages (manual from config + auto from
+    SQLite). Manual binding takes priority over the auto-binding."""
     cfg = load_config()
-    return [
-        pf.package
-        for pf in cfg.platforms.values()
-        if pf.package
-    ]
+    pkgs: list[str] = []
+    try:
+        conn = db.get_connection()
+    except Exception as e:  # DB unavailable (first run / phone offline)
+        logger.warning("reset: cannot open DB for platform packages: %s", e)
+        return [pf.package for pf in cfg.platforms.values() if pf.package]
+    try:
+        for platform, pcfg in cfg.platforms.items():
+            eff = db.get_effective_package(
+                conn, platform=platform, manual_package=pcfg.package
+            )
+            if eff and eff[0]:
+                pkgs.append(eff[0])
+    finally:
+        conn.close()
+    return pkgs
 
 
 def _safe(fn, *args, **kwargs):

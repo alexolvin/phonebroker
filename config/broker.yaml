@@ -9,7 +9,8 @@ starvation_threshold: 5
 journal_retention_days: 90
 
 adb:
-  serial: "YOUR_ADB_SERIAL"  # fill in the real ADB serial (adb devices)
+  # Real serial goes in config/broker.local.yaml (gitignored) — see README.
+  serial: "YOUR_ADB_SERIAL"
 
 unlock_swipe:
   x1: 540
@@ -59,11 +60,10 @@ defaults:
     min_interval_s: 0
     max_daily_leases: 50
 
-# One entry per client project. `make install` generates a token for each.
-clients:
-  client_a:
-    env_file: ""
-  client_b:
-    env_file: ""
+# Client projects are defined in config/broker.local.yaml (gitignored):
+#   clients:
+#     client_a:
+#       env_file: "/path/to/client/project/.env"
+clients: {}
 
 data_dir: "/var/lib/phonebroker"

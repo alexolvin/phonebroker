@@ -15,7 +15,7 @@ from phonebroker.exceptions import ADBError
 # Allowed adb subcommands (first token after "shell")
 _ALLOWED_SHELL_COMMANDS = frozenset({
     "am", "input", "uiautomator", "dumpsys", "cmd", "ime",
-    "settings", "pm", "get-state", "rm",
+    "settings", "pm", "get-state", "rm", "screencap",
 })
 
 

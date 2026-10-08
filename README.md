@@ -45,9 +45,10 @@ rate limits, and a whitelisted set of ADB operations.
 git clone https://github.com/alexolvin/phonebroker.git
 cd phonebroker
 
-# 1. Set the phone's ADB serial (adb devices) in config/broker.yaml:
-#    adb:
-#      serial: "YOUR_ADB_SERIAL"
+# 1. Create config/broker.local.yaml (gitignored) with the phone's ADB serial
+#    (see `adb devices`):
+#      adb:
+#        serial: "YOUR_ADB_SERIAL"
 
 # 2. Install (system user, udev, nftables, systemd, ADB key, tokens, ADBKeyBoard):
 sudo make install
@@ -69,13 +70,27 @@ The service listens on `127.0.0.1:8090`.
 
 ## Configuration
 
-The repository ships `config/broker.yaml` with defaults; `make install` copies
-it to `/etc/phonebroker/broker.yaml`, which is the single runtime source.
+The repository ships `config/broker.yaml` with public defaults. Local values
+that must not be published (real ADB serial, client projects, owner SSH key
+comment) live in **`config/broker.local.yaml`**, which is gitignored.
+`make install` merges the two into `/etc/phonebroker/broker.yaml`, the single
+runtime source:
+
+```yaml
+# config/broker.local.yaml (gitignored — example)
+adb:
+  serial: "YOUR_ADB_SERIAL"
+ssh:
+  key_comment: "your-key-comment"   # comment of the owner key in authorized_keys
+clients:
+  client_a:
+    env_file: "/path/to/client/project/.env"
+```
 
 | Key | Purpose | Default |
 |---|---|---|
 | `port` | API port | `8090` |
-| `adb.serial` | ADB serial of the phone — **must be filled in** | `YOUR_ADB_SERIAL` |
+| `adb.serial` | ADB serial of the phone — **set in `config/broker.local.yaml`** | `YOUR_ADB_SERIAL` |
 | `heartbeat_timeout_s` | Lease is requeued when the client stops heartbeating | `60` |
 | `check_interval_s` | Queue re-check interval | `2` |
 | `starvation_threshold` | Queued lease is promoted after N checks | `5` |
@@ -83,7 +98,7 @@ it to `/etc/phonebroker/broker.yaml`, which is the single runtime source.
 | `platforms.<id>.keywords` | Keywords for automatic package matching | `[]` |
 | `platforms.<id>.limits` | Per-platform limit overrides | `{}` |
 | `defaults.background` / `defaults.interactive` | `min_interval_s`, `max_daily_leases` | see file |
-| `clients.<name>` | One entry per client project; a token is generated for each | — |
+| `clients.<name>` | One entry per client project (local config); a token is generated for each | `{}` |
 | `data_dir` | SQLite + screenshots | `/var/lib/phonebroker` |
 
 **Tokens.** `make install` generates `PHONEBROKER_TOKEN_OWNER` and one
@@ -173,6 +188,8 @@ make acceptance  # T1–T12 against the installed system (requires the phone)
 
 No secrets are stored in the repository; tokens live in
 `/etc/phonebroker/env` (root:phonebroker, 640) and are resolved at runtime.
+The real ADB serial, client projects, and owner key reference live in the
+gitignored `config/broker.local.yaml`.
 ADB ports (5037, 27183) are restricted by nftables to the `phonebroker` user.
 Report vulnerabilities via [SECURITY.md](SECURITY.md).
 
